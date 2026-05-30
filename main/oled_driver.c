@@ -32,3 +32,14 @@ void i2c_stop()
     ets_delay_us(5);
     gpio_set_level(SCL_PIN, 1);
 }
+
+void write_bit(int bit)
+{
+    gpio_set_direction(SDA_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_direction(SCL_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_level(SDA_PIN, bit);
+    ets_delay_us(5);
+    gpio_set_level(SCL_PIN, 1);
+    ets_delay_us(5);
+    gpio_set_level(SCL_PIN, 0);
+}
