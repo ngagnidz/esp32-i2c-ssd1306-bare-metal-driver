@@ -43,3 +43,11 @@ void write_bit(int bit)
     ets_delay_us(5);
     gpio_set_level(SCL_PIN, 0);
 }
+
+void i2c_write_byte(u_int8_t byte)
+{
+    for (int i = 7; i >= 0; i--)
+    {
+        write_bit((byte >> i) & 1); // shift by i and then and operation with 1 for bit extraction
+    }
+}
