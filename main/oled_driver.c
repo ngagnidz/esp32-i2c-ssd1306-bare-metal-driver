@@ -18,6 +18,17 @@ void i2c_start()
     ets_delay_us(5);
     gpio_set_level(SDA_PIN, 0);
     ets_delay_us(5);
+    gpio_set_level(SCL_PIN, 0);
+}
 
-    gpio_set_level(SCL_PIN, 0); // Prepare for transmition
+void i2c_stop()
+{
+    gpio_set_direction(SDA_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_direction(SCL_PIN, GPIO_MODE_OUTPUT);
+    gpio_set_level(SCL_PIN, 1);
+    gpio_set_level(SDA_PIN, 0);
+    ets_delay_us(5);
+    gpio_set_level(SDA_PIN, 1);
+    ets_delay_us(5);
+    gpio_set_level(SCL_PIN, 1);
 }
