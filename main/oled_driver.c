@@ -51,3 +51,13 @@ void i2c_write_byte(u_int8_t byte)
         write_bit((byte >> i) & 1); // shift by i and then and operation with 1 for bit extraction
     }
 }
+
+void i2c_ack()
+{
+    gpio_set_direction(SDA_PIN, GPIO_MODE_INPUT);
+    ets_delay_us(5); // Allow the slave to pull the line and then read
+    gpio_set_level(SCL_PIN, 1);
+    int slave_signal = gpio_get_level(SDA_PIN);
+    gpio_set_level(SCL_PIN, 0);
+    return slave_signal;
+}
