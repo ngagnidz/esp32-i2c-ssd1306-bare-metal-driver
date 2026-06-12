@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "driver/gpio.h"
 #include "esp_rom_sys.h"
+#include "font8x8_basic.h"
 
 #define SDA_PIN 21
 #define SCL_PIN 22
@@ -20,11 +21,11 @@ void i2c_start()
 
 void i2c_stop()
 {
-    gpio_set_direction(SDA_PIN, GPIO_MODE_OUTPUT);
-    gpio_set_direction(SCL_PIN, GPIO_MODE_OUTPUT);
-    gpio_set_level(SDA_PIN, 0);
-    esp_rom_delay_us(5);
     gpio_set_level(SCL_PIN, 1);
+    esp_rom_delay_us(5);
+
+    gpio_set_level(SDA_PIN, 0);
+
     esp_rom_delay_us(5);
     gpio_set_level(SDA_PIN, 1);
     esp_rom_delay_us(5);
@@ -56,8 +57,7 @@ int i2c_ack()
     esp_rom_delay_us(5);
     gpio_set_level(SCL_PIN, 1);
     esp_rom_delay_us(5);
-    int response = gpio_get_level(SDA_PIN); // Read
-    gpio_set_level(SCL_PIN, 0);
+    int response = gpio_get_level(SDA_PIN);
     gpio_set_direction(SDA_PIN, GPIO_MODE_OUTPUT);
     return response;
 }
@@ -68,22 +68,22 @@ void ssd1306_send_command(uint8_t cmd)
     i2c_write_byte(0x3C << 1 | 0);
     if (i2c_ack() == 1)
     {
-        printf("Address Error");
-        i2c_stop();
+        printf("Address error \n");
         return;
     }
-    i2c_write_byte(0x00); // Next byte is a command
+
+    i2c_write_byte(0x00);
     if (i2c_ack() == 1)
     {
-        printf("Control byte error");
-        i2c_stop();
+        printf("Control byte error \n");
         return;
     }
+    esp_rom_delay_us(5);
+
     i2c_write_byte(cmd);
     if (i2c_ack() == 1)
     {
-        printf("CMD byte error");
-        i2c_stop();
+        printf("Command write error \n");
         return;
     }
     i2c_stop();
@@ -95,103 +95,136 @@ void ssd1306_send_data(uint8_t data)
     i2c_write_byte(0x3C << 1 | 0);
     if (i2c_ack() == 1)
     {
-        printf("Address Error");
-        i2c_stop();
+        printf("Address error \n");
         return;
     }
-    i2c_write_byte(0b01000000);
+
+    i2c_write_byte(0x40);
     if (i2c_ack() == 1)
     {
-        printf("Control byte error");
-        i2c_stop();
+        printf("Control byte error \n");
         return;
     }
+    esp_rom_delay_us(5);
+
     i2c_write_byte(data);
     if (i2c_ack() == 1)
     {
-        printf("CMD byte error");
-        i2c_stop();
+        printf("Command write error \n");
         return;
     }
     i2c_stop();
 }
 
-// Initialization sequence specified by the datasheet Section 3 Figure 2.
+// 0xAE         display off
+// 0xA8, 0x3F   MUX ratio = 64
+// 0xD3, 0x00   display offset = 0
+// 0x40         start line = 0
+// 0xA1         segment remap
+// 0xC8         COM scan direction (remapped)
+// 0xDA, 0x12   COM pins config
+// 0xD5, 0x80   osc frequency
+// 0x81, 0x7F   contrast
+// 0xA4         resume from RAM
+// 0xA6         normal display
+// 0x8D, 0x14   charge pump on
+// 0xAF         display on
 void ssd1306_init()
 {
-    ssd1306_send_command(0xAE); // Display OFF
-    ssd1306_send_command(0xA8); // Set MUX Ratio
-    ssd1306_send_command(0x3F);
-    ssd1306_send_command(0xD3); // Set Display Offset
-    ssd1306_send_command(0x00);
-    ssd1306_send_command(0x40); // Set Display Start Line
-    ssd1306_send_command(0xA1); // Set Segment re-map (column 127 = SEG0)
-    ssd1306_send_command(0xC8); // Set COM Output Scan Direction (remapped)
-    ssd1306_send_command(0xDA); // Set COM Pins hardware configuration
+    ssd1306_send_command(0xAE); // display off
+    ssd1306_send_command(0xA8); // MUX ratio
+    ssd1306_send_command(0x3F); //   = 64
+    ssd1306_send_command(0xD3); // display offset
+    ssd1306_send_command(0x00); //   = 0
+    ssd1306_send_command(0x40); // start line = 0
+    ssd1306_send_command(0xA1); // segment remap
+    ssd1306_send_command(0xC8); // COM scan direction (remapped)
+    ssd1306_send_command(0xDA); // COM pins config
     ssd1306_send_command(0x12);
-    ssd1306_send_command(0xD5); // Set Osc Frequency
+    ssd1306_send_command(0xD5); // osc frequency
     ssd1306_send_command(0x80);
-    ssd1306_send_command(0x81); // Set Contrast
+    ssd1306_send_command(0x81); // contrast
     ssd1306_send_command(0x7F);
-    ssd1306_send_command(0xA4); // Resume to RAM content display
-    ssd1306_send_command(0xA6); // Set Normal Display
-    ssd1306_send_command(0x8D); // Enable charge pump
-    ssd1306_send_command(0x14);
-    ssd1306_send_command(0xAF); // Display ON
+    ssd1306_send_command(0xA4); // resume from RAM
+    ssd1306_send_command(0xA6); // normal display
+    ssd1306_send_command(0x8D); // charge pump
+    ssd1306_send_command(0x14); //   on
+    ssd1306_send_command(0xAF); // display on
 }
 
-uint8_t buffer[8][128];
+uint8_t framebuffer[1024] = {0}; // We have 1024 columns 8 pages * 128 columns. Each column has 8 rows. 1 column takes in 1 byte.
+// Each bit in a byte is one row.
+
+void ssd1306_draw_pixel(int x, int y)
+{
+    if (x < 0 || x >= 128 || y < 0 || y >= 64)
+        return;
+    int page = y / 8;
+    int d = page * 128 + x;
+    framebuffer[d] |= 1 << y % 8;
+}
 
 void ssd1306_flush()
 {
-    // Set horizontal addressing mode
+    // Horizontal addressing mode
     ssd1306_send_command(0x20);
     ssd1306_send_command(0x00);
 
-    // Set column 0 to 127
+    // Set column range
     ssd1306_send_command(0x21);
     ssd1306_send_command(0x00);
     ssd1306_send_command(127);
 
-    // Set page 0 to 7
+    // Set page range
     ssd1306_send_command(0x22);
     ssd1306_send_command(0x00);
-    ssd1306_send_command(0x07);
-    for (int i = 0; i <= 127; i++)
+    ssd1306_send_command(7);
+
+    for (int i = 0; i < 1024; i++)
     {
-        for (int j = 0; j <= 7; j++)
+        ssd1306_send_data(framebuffer[i]);
+    }
+}
+
+void ssd1306_clear()
+{
+    for (int i = 0; i < 1024; i++)
+    {
+        framebuffer[i] = 0;
+    }
+}
+
+void ssd1306_draw_char(char c, int x, int y)
+{
+    for (int row = 0; row < 8; row++)
+    {
+        for (int col = 0; col < 8; col++)
         {
-            ssd1306_send_data(buffer[j][i]);
+            if (font8x8_basic[(int)c][row] >> col & 1)
+            {
+                ssd1306_draw_pixel(x + col, y + row);
+            }
         }
     }
 }
 
-void ssd1306_draw_pixel(int x, int y)
+void ssd1306_draw_string(char *str, int x, int y)
 {
-    int page = y / 8;
-    int row = y % 8;
-    buffer[page][x] |= (1 << row);
-}
-
-void ssd1306_draw_clear()
-{
-    for (int i = 0; i <= 127; i++)
+    while (*str != '\0')
     {
-        for (int j = 0; j <= 7; j++)
-        {
-            buffer[j][i] = 0x00;
-        }
+        ssd1306_draw_char(*str, x, y);
+        x += 8;
+        str++;
     }
 }
 
 void app_main(void)
 {
-    esp_rom_delay_us(100000); // 100ms
     ssd1306_init();
-    ssd1306_draw_clear();
+    ssd1306_clear();
+    ssd1306_draw_string("Hello World", 0, 0);
     ssd1306_flush();
-    ssd1306_draw_pixel(5, 5);
+    ssd1306_clear();
+    ssd1306_draw_string("Bye World", 0, 0);
     ssd1306_flush();
-    printf("starting\n");
-    printf("\n");
 }
