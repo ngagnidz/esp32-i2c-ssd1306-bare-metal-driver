@@ -23,9 +23,7 @@ void i2c_stop()
 {
     gpio_set_level(SCL_PIN, 1);
     esp_rom_delay_us(5);
-
     gpio_set_level(SDA_PIN, 0);
-
     esp_rom_delay_us(5);
     gpio_set_level(SDA_PIN, 1);
     esp_rom_delay_us(5);
@@ -166,7 +164,7 @@ void ssd1306_draw_pixel(int x, int y)
 
 void ssd1306_flush()
 {
-    // Horizontal addressing mode
+    // Horizontal addressing mode - Increments to the next page
     ssd1306_send_command(0x20);
     ssd1306_send_command(0x00);
 
@@ -180,10 +178,31 @@ void ssd1306_flush()
     ssd1306_send_command(0x00);
     ssd1306_send_command(7);
 
+    i2c_start();
+    i2c_write_byte(0x3C << 1 | 0);
+    if (i2c_ack() == 1)
+    {
+        printf("Address error \n");
+        return;
+    }
+
+    i2c_write_byte(0x40);
+    if (i2c_ack() == 1)
+    {
+        printf("Control byte error\n");
+        return;
+    }
+
     for (int i = 0; i < 1024; i++)
     {
-        ssd1306_send_data(framebuffer[i]);
+        i2c_write_byte(framebuffer[i]);
+        if (i2c_ack() == 1)
+        {
+            printf("Write Error \n");
+            return;
+        }
     }
+    i2c_stop();
 }
 
 void ssd1306_clear()
@@ -194,7 +213,7 @@ void ssd1306_clear()
     }
 }
 
-void ssd1306_draw_char(char c, int x, int y)
+void ssd1306_draw_char(int c, int x, int y)
 {
     for (int row = 0; row < 8; row++)
     {
@@ -212,8 +231,20 @@ void ssd1306_draw_string(char *str, int x, int y)
 {
     while (*str != '\0')
     {
+        if (y >= 64)
+            return;
+        // One column is 1 pixel wide and 8 pixel tall. Each character is 8 pixels = 1 byte in width.
         ssd1306_draw_char(*str, x, y);
-        x += 8;
+        if (x + 8 >= 128)
+        {
+            y += 8;
+            x = 0;
+        }
+        else
+        {
+            x += 8;
+        }
+
         str++;
     }
 }
@@ -225,6 +256,6 @@ void app_main(void)
     ssd1306_draw_string("Hello World", 0, 0);
     ssd1306_flush();
     ssd1306_clear();
-    ssd1306_draw_string("Bye World", 0, 0);
+    ssd1306_draw_string("Kannst du spagetti kochen", 0, 0);
     ssd1306_flush();
 }
