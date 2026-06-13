@@ -61,11 +61,7 @@ Timing is created using the Xtensa LX6 CPU's hardware cycle counter (`CCOUNT`) u
 
 The SSD1306 GDDRAM is organized as 8 pages x 128 columns. Each byte represents a 1x8 vertical slice of pixels. The bits map to individual pixel rows within that page.
 
-The driver has a 1024-byte framebuffer in RAM. Drawing functions (`draw_pixel`, `draw_char`, `draw_string`) write into this buffer. When `ssd1306_flush()` is called, the entire buffer is sent to the display in one I2C transaction:
-
-```
-START → address → control byte (0x40) → [1024 data bytes] → STOP
-```
+The driver has a 1024-byte framebuffer in RAM. Drawing functions (`draw_pixel`, `draw_char`, `draw_string`) write into this buffer. When `ssd1306_flush()` is called, the entire buffer is sent to the display in one I2C transaction.
 
 The display is put into horizontal addressing mode (`0x20, 0x00`), so it auto increments through every column and page without the driver needing to reset the cursor. Initial approach called `ssd1306_send_data()` once per byte. It opened and closed a full I2C transaction (START, address, ACK, control byte, ACK, data, ACK, STOP) for each byte. The single transaction flush reduces that to one START and one STOP for the entire frame buffer.
 
